@@ -3,6 +3,8 @@ const CONFIG = {
   OUTPUT_SHEET_NAME: "Astra Expenses",
   UPLOAD_QUESTION_TITLE: "Upload Invoice",
   DEFAULT_ENTERED_VALUE: "BILL",
+  REF_NUMBER_MIN_LENGTH: 20,
+  TRANS_NUMBER_MIN_LENGTH: 20,
   CURRENCY_SYMBOL: "",
   GEMINI_MODEL: "gemini-2.5-flash",
   CSV_EXPORT_FOLDER_ID: ""
@@ -102,7 +104,12 @@ function analyzeReceipt_(fileId) {
   const prompt = [
     "You are extracting data from a receipt or tax invoice image.",
     "Return ONLY a JSON object with these keys:",
-    "vendor, invoice_number, date, subtotal, tax, total, currency.",
+    "vendor, invoice_number, date, subtotal, tax, total, currency, payment_method, card_reference, cash_reference.",
+    "invoice_number, card_reference, and cash_reference must be strings and must preserve leading zeros as printed.",
+    "If you see REF. NO (or reference no.) on card receipts, put it in card_reference.",
+    "If you see POS/TR/ID line on cash receipts (e.g., POS1 TR#### ID########), put it in cash_reference.",
+    "If you see TRANS. NUMBER or TRANSACTION NUMBER, treat it as invoice_number.",
+    "If only one reference exists, also set invoice_number to that value.",
     "Format date as DD/MM/YYYY when possible.",
     "Use numbers for subtotal, tax, and total without currency symbols.",
     "If a field is missing, set it to null."
@@ -191,7 +198,7 @@ function buildRowValues_(receiptData, submittedAt, formData) {
 function normalizeReceiptData_(receiptData, submittedAt, formData) {
   // Use AI-extracted data as primary, form data as fallback
   const vendor = receiptData.vendor || formData.vendorName || "";
-  const invoiceNumber = receiptData.invoice_number || receiptData.reference_number || "";
+  const invoiceNumber = selectReferenceNumber_(receiptData);
   const dateValue = receiptData.date || formData.dateOfPurchase || "";
 
   const subtotal = parseNumber_(receiptData.subtotal);
@@ -248,6 +255,130 @@ function parseNumber_(value) {
   }
   const parsed = Number(cleaned);
   return Number.isNaN(parsed) ? "" : parsed;
+}
+
+function selectReferenceNumber_(receiptData) {
+  const paymentMethod = getPaymentMethod_(receiptData);
+  const cardReference = firstNonEmpty_([
+    receiptData.card_reference,
+    receiptData.card_ref,
+    receiptData.card_ref_no,
+    receiptData.ref_no,
+    receiptData.reference_number,
+    receiptData.reference_no,
+    receiptData.ref_number
+  ]);
+  const cashReference = firstNonEmpty_([
+    receiptData.cash_reference,
+    receiptData.cash_ref,
+    receiptData.pos_reference,
+    receiptData.pos_ref,
+    receiptData.pos_id,
+    receiptData.transaction_reference
+  ]);
+  const transactionNumber = firstNonEmpty_([
+    receiptData.transaction_number,
+    receiptData.trans_number,
+    receiptData.trans_no,
+    receiptData.trans_id
+  ]);
+  const invoiceNumber = firstNonEmpty_([
+    receiptData.invoice_number,
+    receiptData.invoice_no,
+    receiptData.invoice
+  ]);
+
+  let selected = "";
+  let padLength = CONFIG.REF_NUMBER_MIN_LENGTH;
+
+  if (isCashPayment_(paymentMethod)) {
+    selected = cashReference || transactionNumber || invoiceNumber || cardReference || "";
+    padLength = selected === transactionNumber || selected === invoiceNumber
+      ? CONFIG.TRANS_NUMBER_MIN_LENGTH
+      : 0;
+  } else if (isCardPayment_(paymentMethod)) {
+    selected = cardReference || transactionNumber || invoiceNumber || cashReference || "";
+    padLength = selected === transactionNumber || selected === invoiceNumber
+      ? CONFIG.TRANS_NUMBER_MIN_LENGTH
+      : 0;
+  } else {
+    selected = invoiceNumber || transactionNumber || cardReference || cashReference || "";
+    if (selected === transactionNumber) {
+      padLength = CONFIG.TRANS_NUMBER_MIN_LENGTH;
+    }
+  }
+
+  return formatReferenceNumber_(selected, padLength);
+}
+
+function firstNonEmpty_(values) {
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (value === 0) {
+      return "0";
+    }
+    if (value) {
+      const text = String(value).trim();
+      if (text) {
+        return text;
+      }
+    }
+  }
+  return "";
+}
+
+function getPaymentMethod_(receiptData) {
+  const value = receiptData.payment_method ||
+    receiptData.paymentMethod ||
+    receiptData.payment_type ||
+    receiptData.paymentType ||
+    receiptData.tender_type ||
+    receiptData.tender ||
+    "";
+  return String(value).trim().toLowerCase();
+}
+
+function isCashPayment_(paymentMethod) {
+  return paymentMethod.includes("cash");
+}
+
+function isCardPayment_(paymentMethod) {
+  const cardHints = [
+    "visa",
+    "mastercard",
+    "master card",
+    "amex",
+    "american express",
+    "card",
+    "credit",
+    "debit",
+    "paywave",
+    "contactless",
+    "nets",
+    "unionpay"
+  ];
+  return cardHints.some((hint) => paymentMethod.includes(hint));
+}
+
+function formatReferenceNumber_(value, padLength) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return "";
+  }
+
+  let normalized = raw;
+  const shouldPad = typeof padLength === "number" && padLength > 0;
+  if (shouldPad && /^\d+$/.test(normalized) && normalized.length < padLength) {
+    normalized = normalized.padStart(padLength, "0");
+  }
+
+  if (normalized.startsWith("0")) {
+    return "'" + normalized;
+  }
+  return normalized;
 }
 
 function extractFileIdFromEvent_(e) {

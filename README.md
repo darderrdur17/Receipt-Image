@@ -160,6 +160,8 @@ const CONFIG = {
   OUTPUT_SHEET_NAME: "Astra Expenses",       // Output sheet name
   UPLOAD_QUESTION_TITLE: "Upload Invoice",   // Exact form question title
   DEFAULT_ENTERED_VALUE: "BILL",             // Value for "Entered" column
+  REF_NUMBER_MIN_LENGTH: 20,                 // Pad ref. no. with leading zeros
+  TRANS_NUMBER_MIN_LENGTH: 20,               // Short transaction number length
   CURRENCY_SYMBOL: "",                       // Leave empty for your format
   GEMINI_MODEL: "gemini-2.5-flash",          // Current Gemini model
   CSV_EXPORT_FOLDER_ID: ""                   // Optional: Google Drive folder ID
@@ -188,6 +190,15 @@ const CONFIG = {
 - ✅ Use clear, high-resolution receipt photos
 - Manual fields provide fallback data
 - Edit rows manually if needed
+
+**❌ Ref. No. loses leading zeros (e.g., 001527 → 1527)**
+- ✅ `REF_NUMBER_MIN_LENGTH` pads numeric IDs with leading zeros
+- ✅ Ref. No. is forced to text when it starts with 0
+
+**❌ Cash vs card reference number mismatch**
+- ✅ Card receipts use `REF. NO` as the reference
+- ✅ Cash receipts use the `POS/TR/ID` line as the reference
+- ✅ If the wrong ref appears, check that payment method text is visible
 
 **❌ Wrong sheet names**
 - ✅ Verify "Form Responses 1" exists
