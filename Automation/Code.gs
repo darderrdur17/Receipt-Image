@@ -4,7 +4,7 @@ const CONFIG = {
   UPLOAD_QUESTION_TITLE: "Upload Invoice",
   DEFAULT_ENTERED_VALUE: "BILL",
   CURRENCY_SYMBOL: "",
-  GEMINI_MODEL: "gemini-1.5-flash",
+  GEMINI_MODEL: "gemini-2.5-flash",
   CSV_EXPORT_FOLDER_ID: ""
 };
 
@@ -39,8 +39,9 @@ function onFormSubmit(e) {
   }
 
   const submittedAt = extractSubmittedAt_(e);
+  const formData = extractFormData_(e);
   const receiptData = analyzeReceipt_(fileId);
-  const rowValues = buildRowValues_(receiptData, submittedAt);
+  const rowValues = buildRowValues_(receiptData, submittedAt, formData);
 
   const outputSheet = getOrCreateOutputSheet_();
   outputSheet.appendRow(rowValues);
@@ -62,7 +63,7 @@ function processLatestResponse() {
 
   const submittedAt = extractSubmittedAtFromRow_(formSheet, lastRow);
   const receiptData = analyzeReceipt_(fileId);
-  const rowValues = buildRowValues_(receiptData, submittedAt);
+  const rowValues = buildRowValues_(receiptData, submittedAt, {}); // No form data available
 
   const outputSheet = getOrCreateOutputSheet_();
   outputSheet.appendRow(rowValues);
@@ -85,7 +86,7 @@ function backfillAllResponses() {
 
     const submittedAt = extractSubmittedAtFromRow_(formSheet, row);
     const receiptData = analyzeReceipt_(fileId);
-    const rowValues = buildRowValues_(receiptData, submittedAt);
+    const rowValues = buildRowValues_(receiptData, submittedAt, {}); // No form data available
 
     const outputSheet = getOrCreateOutputSheet_();
     outputSheet.appendRow(rowValues);
@@ -171,8 +172,8 @@ function parseReceiptJson_(text) {
   }
 }
 
-function buildRowValues_(receiptData, submittedAt) {
-  const normalized = normalizeReceiptData_(receiptData, submittedAt);
+function buildRowValues_(receiptData, submittedAt, formData) {
+  const normalized = normalizeReceiptData_(receiptData, submittedAt, formData);
 
   return [
     normalized.date,
@@ -187,10 +188,11 @@ function buildRowValues_(receiptData, submittedAt) {
   ];
 }
 
-function normalizeReceiptData_(receiptData, submittedAt) {
-  const vendor = receiptData.vendor || "";
+function normalizeReceiptData_(receiptData, submittedAt, formData) {
+  // Use AI-extracted data as primary, form data as fallback
+  const vendor = receiptData.vendor || formData.vendorName || "";
   const invoiceNumber = receiptData.invoice_number || receiptData.reference_number || "";
-  const dateValue = receiptData.date || "";
+  const dateValue = receiptData.date || formData.dateOfPurchase || "";
 
   const subtotal = parseNumber_(receiptData.subtotal);
   const tax = parseNumber_(receiptData.tax || receiptData.gst);
@@ -264,6 +266,17 @@ function extractSubmittedAt_(e) {
     }
   }
   return null;
+}
+
+function extractFormData_(e) {
+  const namedValues = e.namedValues || {};
+
+  return {
+    dateOfPurchase: (namedValues["Date of Purchase"] || namedValues["Date of Purchase"] || [""])[0] || "",
+    vendorName: (namedValues["Vendor Name"] || namedValues["Vendor Name"] || [""])[0] || "",
+    category: (namedValues["Category"] || namedValues["Category"] || [""])[0] || "",
+    notes: (namedValues["Notes"] || namedValues["Notes"] || [""])[0] || ""
+  };
 }
 
 function extractSubmittedAtFromRow_(sheet, row) {
