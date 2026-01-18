@@ -3,8 +3,8 @@ const CONFIG = {
   OUTPUT_SHEET_NAME: "Astra Expenses",
   UPLOAD_QUESTION_TITLE: "Upload Invoice",
   DEFAULT_ENTERED_VALUE: "BILL",
-  REF_NUMBER_MIN_LENGTH: 20,
-  TRANS_NUMBER_MIN_LENGTH: 20,
+  REF_NUMBER_MAX_LENGTH: 20,
+  TRANS_NUMBER_MAX_LENGTH: 20,
   CURRENCY_SYMBOL: "",
   GEMINI_MODEL: "gemini-2.5-flash",
   CSV_EXPORT_FOLDER_ID: ""
@@ -104,12 +104,13 @@ function analyzeReceipt_(fileId) {
   const prompt = [
     "You are extracting data from a receipt or tax invoice image.",
     "Return ONLY a JSON object with these keys:",
-    "vendor, invoice_number, date, subtotal, tax, total, currency, payment_method, card_reference, cash_reference.",
-    "invoice_number, card_reference, and cash_reference must be strings and must preserve leading zeros as printed.",
+    "vendor, invoice_number, transaction_number, auth_code, date, subtotal, tax, total, currency, payment_method, card_reference, cash_reference.",
+    "invoice_number, transaction_number, card_reference, and cash_reference must be strings and must preserve leading zeros as printed.",
+    "If you see TRANS. NUMBER / TRANSACTION NO / TRANS NO, put it in transaction_number.",
+    "If you see AUTH CODE, put it in auth_code (do NOT use it as invoice_number).",
     "If you see REF. NO (or reference no.) on card receipts, put it in card_reference.",
     "If you see POS/TR/ID line on cash receipts (e.g., POS1 TR#### ID########), put it in cash_reference.",
-    "If you see TRANS. NUMBER or TRANSACTION NUMBER, treat it as invoice_number.",
-    "If only one reference exists, also set invoice_number to that value.",
+    "If only one reference exists, also set invoice_number to that value (but never use auth_code).",
     "Format date as DD/MM/YYYY when possible.",
     "Use numbers for subtotal, tax, and total without currency symbols.",
     "If a field is missing, set it to null."
@@ -282,6 +283,12 @@ function selectReferenceNumber_(receiptData) {
     receiptData.trans_no,
     receiptData.trans_id
   ]);
+  const authCode = firstNonEmpty_([
+    receiptData.auth_code,
+    receiptData.authorization_code,
+    receiptData.auth,
+    receiptData.authCode
+  ]);
   const invoiceNumber = firstNonEmpty_([
     receiptData.invoice_number,
     receiptData.invoice_no,
@@ -289,26 +296,25 @@ function selectReferenceNumber_(receiptData) {
   ]);
 
   let selected = "";
-  let padLength = CONFIG.REF_NUMBER_MIN_LENGTH;
+  let maxLength = CONFIG.REF_NUMBER_MAX_LENGTH;
 
-  if (isCashPayment_(paymentMethod)) {
-    selected = cashReference || transactionNumber || invoiceNumber || cardReference || "";
-    padLength = selected === transactionNumber || selected === invoiceNumber
-      ? CONFIG.TRANS_NUMBER_MIN_LENGTH
-      : 0;
+  if (transactionNumber) {
+    selected = transactionNumber;
+    maxLength = CONFIG.TRANS_NUMBER_MAX_LENGTH;
+  } else if (isCashPayment_(paymentMethod)) {
+    selected = cashReference || invoiceNumber || cardReference || "";
   } else if (isCardPayment_(paymentMethod)) {
-    selected = cardReference || transactionNumber || invoiceNumber || cashReference || "";
-    padLength = selected === transactionNumber || selected === invoiceNumber
-      ? CONFIG.TRANS_NUMBER_MIN_LENGTH
-      : 0;
+    selected = cardReference || invoiceNumber || cashReference || "";
   } else {
-    selected = invoiceNumber || transactionNumber || cardReference || cashReference || "";
-    if (selected === transactionNumber) {
-      padLength = CONFIG.TRANS_NUMBER_MIN_LENGTH;
-    }
+    selected = invoiceNumber || cardReference || cashReference || "";
   }
 
-  return formatReferenceNumber_(selected, padLength);
+  if (authCode && selected === authCode) {
+    selected = transactionNumber || cashReference || cardReference || invoiceNumber || "";
+    maxLength = selected === transactionNumber ? CONFIG.TRANS_NUMBER_MAX_LENGTH : maxLength;
+  }
+
+  return formatReferenceNumber_(selected, maxLength);
 }
 
 function firstNonEmpty_(values) {
@@ -360,7 +366,7 @@ function isCardPayment_(paymentMethod) {
   return cardHints.some((hint) => paymentMethod.includes(hint));
 }
 
-function formatReferenceNumber_(value, padLength) {
+function formatReferenceNumber_(value, maxLength) {
   if (value === null || value === undefined || value === "") {
     return "";
   }
@@ -370,9 +376,9 @@ function formatReferenceNumber_(value, padLength) {
   }
 
   let normalized = raw;
-  const shouldPad = typeof padLength === "number" && padLength > 0;
-  if (shouldPad && /^\d+$/.test(normalized) && normalized.length < padLength) {
-    normalized = normalized.padStart(padLength, "0");
+  const shouldTrim = typeof maxLength === "number" && maxLength > 0;
+  if (shouldTrim && /^\d+$/.test(normalized) && normalized.length > maxLength) {
+    normalized = normalized.slice(0, maxLength);
   }
 
   if (normalized.startsWith("0")) {
