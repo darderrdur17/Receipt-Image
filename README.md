@@ -15,7 +15,7 @@ This project creates a fully automated receipt processing system that extracts p
 The output uses these exact headers for Astra Expenses:
 
 ```
-Date, Entered, Ref. No., Suppliers, #, Sub-Total, #, GST, if any, Payable
+Date, Entered by, Ref. No., Suppliers, Sub-Total, GST, if any, Payable
 ```
 
 ## 🚀 Complete Setup Guide (Step-by-Step)
@@ -159,10 +159,9 @@ const CONFIG = {
   FORM_SHEET_NAME: "Form Responses 1",        // Your form responses sheet name
   OUTPUT_SHEET_NAME: "Astra Expenses",       // Output sheet name
   UPLOAD_QUESTION_TITLE: "Upload Invoice",   // Exact form question title
-  DEFAULT_ENTERED_VALUE: "BILL",             // Value for "Entered" column
+  DEFAULT_ENTERED_VALUE: "BILL",             // Value for "Entered by" column
   REF_NUMBER_MAX_LENGTH: 20,                 // Max digits for ref. no. (numeric)
   TRANS_NUMBER_MAX_LENGTH: 20,               // Max digits for transaction no.
-  CURRENCY_SYMBOL: "",                       // Leave empty for your format
   GEMINI_MODEL: "gemini-2.5-flash",          // Current Gemini model
   CSV_EXPORT_FOLDER_ID: ""                   // Optional: Google Drive folder ID
 };

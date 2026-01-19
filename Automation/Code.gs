@@ -5,19 +5,16 @@ const CONFIG = {
   DEFAULT_ENTERED_VALUE: "BILL",
   REF_NUMBER_MAX_LENGTH: 20,
   TRANS_NUMBER_MAX_LENGTH: 20,
-  CURRENCY_SYMBOL: "",
   GEMINI_MODEL: "gemini-2.5-flash",
   CSV_EXPORT_FOLDER_ID: ""
 };
 
 const OUTPUT_HEADERS = [
   "Date",
-  "Entered",
+  "Entered by",
   "Ref. No.",
   "Suppliers",
-  "#",
   "Sub-Total",
-  "#",
   "GST, if any",
   "Payable"
 ];
@@ -188,9 +185,7 @@ function buildRowValues_(receiptData, submittedAt, formData) {
     CONFIG.DEFAULT_ENTERED_VALUE,
     normalized.invoiceNumber,
     normalized.vendor,
-    CONFIG.CURRENCY_SYMBOL,
     normalized.subtotal,
-    CONFIG.CURRENCY_SYMBOL,
     normalized.tax,
     normalized.total
   ];
