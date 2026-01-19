@@ -44,6 +44,7 @@ function onFormSubmit(e) {
   const rowValues = buildRowValues_(receiptData, submittedAt, formData);
 
   const outputSheet = getOrCreateOutputSheet_();
+  trimOutputColumns_(outputSheet);
   outputSheet.appendRow(rowValues);
 
   exportOutputToCsv_(outputSheet);
@@ -66,6 +67,7 @@ function processLatestResponse() {
   const rowValues = buildRowValues_(receiptData, submittedAt, {}); // No form data available
 
   const outputSheet = getOrCreateOutputSheet_();
+  trimOutputColumns_(outputSheet);
   outputSheet.appendRow(rowValues);
 
   exportOutputToCsv_(outputSheet);
@@ -89,6 +91,7 @@ function backfillAllResponses() {
     const rowValues = buildRowValues_(receiptData, submittedAt, {}); // No form data available
 
     const outputSheet = getOrCreateOutputSheet_();
+    trimOutputColumns_(outputSheet);
     outputSheet.appendRow(rowValues);
   }
 }
