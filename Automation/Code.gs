@@ -21,6 +21,7 @@ const OUTPUT_HEADERS = [
 
 function setupOutputSheet() {
   const sheet = getOrCreateOutputSheet_();
+  trimOutputColumns_(sheet);
   const headerRange = sheet.getRange(1, 1, 1, OUTPUT_HEADERS.length);
   headerRange.setValues([OUTPUT_HEADERS]);
   headerRange.setFontWeight("bold");
@@ -466,6 +467,13 @@ function getOrCreateOutputSheet_() {
     sheet.setFrozenRows(1);
   }
   return sheet;
+}
+
+function trimOutputColumns_(sheet) {
+  const maxColumns = sheet.getMaxColumns();
+  if (maxColumns > OUTPUT_HEADERS.length) {
+    sheet.deleteColumns(OUTPUT_HEADERS.length + 1, maxColumns - OUTPUT_HEADERS.length);
+  }
 }
 
 function getHeaderMap_(sheet) {
