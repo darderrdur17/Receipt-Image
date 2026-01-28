@@ -15,8 +15,10 @@ This project creates a fully automated receipt processing system that extracts p
 The output uses these exact headers for Astra Expenses:
 
 ```
-Date, Entered by, Ref. No., Suppliers, Sub-Total, GST, if any, Payable
+Date, Entered by, Ref. No., Suppliers, Sub-Total, GST, if any, Payable, Total Payable
 ```
+
+**Note:** "Total Payable" shows the grand total (sum of all Payable amounts) in the **last row only**. This value updates automatically whenever a new receipt is processed.
 
 ## 🚀 Complete Setup Guide (Step-by-Step)
 
@@ -160,6 +162,7 @@ const CONFIG = {
   OUTPUT_SHEET_NAME: "Astra Expenses",       // Output sheet name
   UPLOAD_QUESTION_TITLE: "Upload Invoice",   // Exact form question title
   DEFAULT_ENTERED_VALUE: "BILL",             // Value for "Entered by" column
+  SUPPLIER_NAME_CASE: "title",               // title | upper | lower
   REF_NUMBER_MAX_LENGTH: 20,                 // Max digits for ref. no. (numeric)
   TRANS_NUMBER_MAX_LENGTH: 20,               // Max digits for transaction no.
   GEMINI_MODEL: "gemini-2.5-flash",          // Current Gemini model
@@ -203,6 +206,9 @@ const CONFIG = {
 - ✅ Transaction number is always preferred when present
 - ✅ AUTH CODE is captured separately and never used as Ref. No.
 
+**❌ Supplier name casing inconsistent**
+- ✅ Set `SUPPLIER_NAME_CASE` to `title`, `upper`, or `lower`
+
 **❌ Wrong sheet names**
 - ✅ Verify "Form Responses 1" exists
 - Update `FORM_SHEET_NAME` in config if different
@@ -213,6 +219,7 @@ const CONFIG = {
 - **Manual Functions**:
   - `processLatestResponse()`: Process last form submission
   - `backfillAllResponses()`: Process all existing submissions
+  - `standardizeOutputSheet()`: Normalize supplier casing + ref format
 
 ## 📋 Additional Features
 

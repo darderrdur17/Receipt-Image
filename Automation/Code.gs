@@ -3,6 +3,7 @@ const CONFIG = {
   OUTPUT_SHEET_NAME: "Astra Expenses",
   UPLOAD_QUESTION_TITLE: "Upload Invoice",
   DEFAULT_ENTERED_VALUE: "BILL",
+  SUPPLIER_NAME_CASE: "title",
   REF_NUMBER_MAX_LENGTH: 20,
   TRANS_NUMBER_MAX_LENGTH: 20,
   GEMINI_MODEL: "gemini-2.5-flash",
@@ -16,7 +17,8 @@ const OUTPUT_HEADERS = [
   "Suppliers",
   "Sub-Total",
   "GST, if any",
-  "Payable"
+  "Payable",
+  "Total Payable"
 ];
 
 function setupOutputSheet() {
@@ -41,11 +43,12 @@ function onFormSubmit(e) {
   const submittedAt = extractSubmittedAt_(e);
   const formData = extractFormData_(e);
   const receiptData = analyzeReceipt_(fileId);
-  const rowValues = buildRowValues_(receiptData, submittedAt, formData);
 
   const outputSheet = getOrCreateOutputSheet_();
   trimOutputColumns_(outputSheet);
+  const rowValues = buildRowValues_(receiptData, submittedAt, formData, outputSheet);
   outputSheet.appendRow(rowValues);
+  updateAllTotalPayable_(outputSheet);
 
   exportOutputToCsv_(outputSheet);
 }
@@ -64,11 +67,12 @@ function processLatestResponse() {
 
   const submittedAt = extractSubmittedAtFromRow_(formSheet, lastRow);
   const receiptData = analyzeReceipt_(fileId);
-  const rowValues = buildRowValues_(receiptData, submittedAt, {}); // No form data available
 
   const outputSheet = getOrCreateOutputSheet_();
   trimOutputColumns_(outputSheet);
+  const rowValues = buildRowValues_(receiptData, submittedAt, {}, outputSheet);
   outputSheet.appendRow(rowValues);
+  updateAllTotalPayable_(outputSheet);
 
   exportOutputToCsv_(outputSheet);
 }
@@ -80,6 +84,9 @@ function backfillAllResponses() {
     throw new Error("No form responses found.");
   }
 
+  const outputSheet = getOrCreateOutputSheet_();
+  trimOutputColumns_(outputSheet);
+
   for (let row = 2; row <= lastRow; row += 1) {
     const fileId = extractFileIdFromRow_(formSheet, row);
     if (!fileId) {
@@ -88,12 +95,16 @@ function backfillAllResponses() {
 
     const submittedAt = extractSubmittedAtFromRow_(formSheet, row);
     const receiptData = analyzeReceipt_(fileId);
-    const rowValues = buildRowValues_(receiptData, submittedAt, {}); // No form data available
-
-    const outputSheet = getOrCreateOutputSheet_();
-    trimOutputColumns_(outputSheet);
+    const rowValues = buildRowValues_(receiptData, submittedAt, {}, outputSheet);
     outputSheet.appendRow(rowValues);
   }
+
+  updateAllTotalPayable_(outputSheet);
+}
+
+function standardizeOutputSheet() {
+  const sheet = getOrCreateOutputSheet_();
+  standardizeOutputSheet_(sheet);
 }
 
 function analyzeReceipt_(fileId) {
@@ -181,7 +192,7 @@ function parseReceiptJson_(text) {
   }
 }
 
-function buildRowValues_(receiptData, submittedAt, formData) {
+function buildRowValues_(receiptData, submittedAt, formData, sheet) {
   const normalized = normalizeReceiptData_(receiptData, submittedAt, formData);
 
   return [
@@ -191,13 +202,14 @@ function buildRowValues_(receiptData, submittedAt, formData) {
     normalized.vendor,
     normalized.subtotal,
     normalized.tax,
-    normalized.total
+    normalized.total,
+    ""
   ];
 }
 
 function normalizeReceiptData_(receiptData, submittedAt, formData) {
   // Use AI-extracted data as primary, form data as fallback
-  const vendor = receiptData.vendor || formData.vendorName || "";
+  const vendor = normalizeSupplierName_(receiptData.vendor || formData.vendorName || "");
   const invoiceNumber = selectReferenceNumber_(receiptData);
   const dateValue = receiptData.date || formData.dateOfPurchase || "";
 
@@ -386,6 +398,35 @@ function formatReferenceNumber_(value, maxLength) {
   return normalized;
 }
 
+function normalizeSupplierName_(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+  const normalized = raw.replace(/\s+/g, " ");
+  const mode = String(CONFIG.SUPPLIER_NAME_CASE || "title").toLowerCase();
+  if (mode === "upper") {
+    return normalized.toUpperCase();
+  }
+  if (mode === "lower") {
+    return normalized.toLowerCase();
+  }
+  return toTitleCase_(normalized.toLowerCase());
+}
+
+function toTitleCase_(value) {
+  return value.split(" ").map(titleCaseToken_).join(" ");
+}
+
+function titleCaseToken_(token) {
+  return token.replace(/[a-zA-Z]+/g, (word) => {
+    if (word.length <= 2) {
+      return word.toUpperCase();
+    }
+    return word.charAt(0).toUpperCase() + word.slice(1);
+  });
+}
+
 function extractFileIdFromEvent_(e) {
   const namedValues = e.namedValues || {};
   const uploadValues = namedValues[CONFIG.UPLOAD_QUESTION_TITLE];
@@ -476,6 +517,65 @@ function trimOutputColumns_(sheet) {
   const maxColumns = sheet.getMaxColumns();
   if (maxColumns > OUTPUT_HEADERS.length) {
     sheet.deleteColumns(OUTPUT_HEADERS.length + 1, maxColumns - OUTPUT_HEADERS.length);
+  }
+}
+
+function updateAllTotalPayable_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return;
+  }
+
+  const payableColumn = 7;
+  const totalPayableColumn = 8;
+
+  if (lastRow > 2) {
+    sheet.getRange(2, totalPayableColumn, lastRow - 2, 1).clearContent();
+  }
+
+  const payableValues = sheet.getRange(2, payableColumn, lastRow - 1, 1).getValues();
+
+  let grandTotalPayable = 0;
+  for (let i = 0; i < payableValues.length; i += 1) {
+    const payableValue = parseNumber_(payableValues[i][0]);
+    if (payableValue !== "") {
+      grandTotalPayable += payableValue;
+    }
+  }
+
+  if (grandTotalPayable > 0) {
+    sheet.getRange(lastRow, totalPayableColumn).setValue(grandTotalPayable);
+  }
+}
+
+function standardizeOutputSheet_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return;
+  }
+  const range = sheet.getRange(2, 1, lastRow - 1, OUTPUT_HEADERS.length);
+  const values = range.getValues();
+
+  let grandTotalPayable = 0;
+
+  for (let rowIndex = 0; rowIndex < values.length; rowIndex += 1) {
+    const row = values[rowIndex];
+    row[2] = formatReferenceNumber_(row[2], CONFIG.REF_NUMBER_MAX_LENGTH);
+    row[3] = normalizeSupplierName_(row[3]);
+
+    const payableValue = parseNumber_(row[6]);
+    if (payableValue !== "") {
+      grandTotalPayable += payableValue;
+    }
+
+    row[7] = "";
+    values[rowIndex] = row;
+  }
+
+  range.setValues(values);
+
+  if (grandTotalPayable > 0) {
+    sheet.getRange(lastRow, 8).setValue(grandTotalPayable);
   }
 }
 
