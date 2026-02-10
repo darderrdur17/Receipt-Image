@@ -7,7 +7,11 @@ const CONFIG = {
   REF_NUMBER_MAX_LENGTH: 20,
   TRANS_NUMBER_MAX_LENGTH: 20,
   GEMINI_MODEL: "gemini-2.5-flash",
-  CSV_EXPORT_FOLDER_ID: ""
+  CSV_EXPORT_FOLDER_ID: "",
+  // Optional: set this to the company Drive folder ID
+  // where uploaded receipt files should be stored.
+  // If left blank, receipts will remain in their original folder.
+  COMPANY_RECEIPT_FOLDER_ID: "1fiHUFdlrw6vwF9RMi9PAQwik7F_CCCyNN94UlROBXNttPlHBvwm64BJcaO_xwhTmBdi2_3Wd"
 };
 
 const OUTPUT_HEADERS = [
@@ -40,6 +44,9 @@ function onFormSubmit(e) {
     throw new Error("No file ID found in the form submission.");
   }
 
+  // If configured, move the uploaded receipt file into the company folder
+  moveReceiptToCompanyFolder_(fileId);
+
   const submittedAt = extractSubmittedAt_(e);
   const formData = extractFormData_(e);
   const receiptData = analyzeReceipt_(fileId);
@@ -51,6 +58,28 @@ function onFormSubmit(e) {
   updateAllTotalPayable_(outputSheet);
 
   exportOutputToCsv_(outputSheet);
+}
+
+function moveReceiptToCompanyFolder_(fileId) {
+  // No-op if a company folder has not been configured
+  if (!CONFIG.COMPANY_RECEIPT_FOLDER_ID) {
+    return;
+  }
+
+  const file = DriveApp.getFileById(fileId);
+  const companyFolder = DriveApp.getFolderById(CONFIG.COMPANY_RECEIPT_FOLDER_ID);
+
+  // Add the file to the company folder
+  companyFolder.addFile(file);
+
+  // Optionally remove from all other parent folders so it only lives in the company folder
+  const parents = file.getParents();
+  while (parents.hasNext()) {
+    const parent = parents.next();
+    if (parent.getId() !== CONFIG.COMPANY_RECEIPT_FOLDER_ID) {
+      parent.removeFile(file);
+    }
+  }
 }
 
 function processLatestResponse() {
