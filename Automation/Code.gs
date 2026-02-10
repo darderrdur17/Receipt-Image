@@ -11,7 +11,7 @@ const CONFIG = {
   // Optional: set this to the company Drive folder ID
   // where uploaded receipt files should be stored.
   // If left blank, receipts will remain in their original folder.
-  COMPANY_RECEIPT_FOLDER_ID: "1fiHUFdlrw6vwF9RMi9PAQwik7F_CCCyNN94UlROBXNttPlHBvwm64BJcaO_xwhTmBdi2_3Wd"
+  COMPANY_RECEIPT_FOLDER_ID: "1ThPJSzjLrnWfuoutFg2xulrfqPsmOm5SJjQYAVLXcK2rWr1VFwnKDtlaz6mw2BaMh2TixgaX"
 };
 
 const OUTPUT_HEADERS = [
@@ -61,24 +61,51 @@ function onFormSubmit(e) {
 }
 
 function moveReceiptToCompanyFolder_(fileId) {
-  // No-op if a company folder has not been configured
   if (!CONFIG.COMPANY_RECEIPT_FOLDER_ID) {
+    Logger.log("No COMPANY_RECEIPT_FOLDER_ID configured");
     return;
   }
 
-  const file = DriveApp.getFileById(fileId);
-  const companyFolder = DriveApp.getFolderById(CONFIG.COMPANY_RECEIPT_FOLDER_ID);
+  Logger.log("moveReceiptToCompanyFolder_ called with fileId=" + fileId);
+  Logger.log("Configured folder ID = " + CONFIG.COMPANY_RECEIPT_FOLDER_ID);
 
-  // Add the file to the company folder
-  companyFolder.addFile(file);
+  let file;
+  try {
+    file = DriveApp.getFileById(fileId);
+    Logger.log("Got file: " + file.getName());
+  } catch (err) {
+    Logger.log("Error getting file by ID: " + err);
+    return;
+  }
 
-  // Optionally remove from all other parent folders so it only lives in the company folder
-  const parents = file.getParents();
-  while (parents.hasNext()) {
-    const parent = parents.next();
-    if (parent.getId() !== CONFIG.COMPANY_RECEIPT_FOLDER_ID) {
-      parent.removeFile(file);
+  let companyFolder;
+  try {
+    companyFolder = DriveApp.getFolderById(CONFIG.COMPANY_RECEIPT_FOLDER_ID);
+    Logger.log("Got company folder");
+  } catch (err) {
+    Logger.log("Error getting folder by ID: " + err);
+    return;
+  }
+
+  try {
+    Logger.log("Adding file to company folder");
+    companyFolder.addFile(file);
+
+    const parents = file.getParents();
+    while (parents.hasNext()) {
+      const parent = parents.next();
+      Logger.log("Parent folder: " + parent.getName() + " (" + parent.getId() + ")");
+      if (parent.getId() !== CONFIG.COMPANY_RECEIPT_FOLDER_ID) {
+        try {
+          parent.removeFile(file);
+          Logger.log("Removed from parent: " + parent.getName());
+        } catch (err) {
+          Logger.log("Failed to remove from parent " + parent.getName() + ": " + err);
+        }
+      }
     }
+  } catch (err) {
+    Logger.log("Error while moving file: " + err);
   }
 }
 
